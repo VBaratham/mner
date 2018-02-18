@@ -21,16 +21,18 @@ class Optimizer(object):
 
     """
 
-    def __init__(self, resp, feat, rank, cetype=None, citype=None, rtype=None, solver=None, datasets=None, **kwargs):
+    def __init__(self, resp, feat, rank, cetype=None, citype=None, rtype=None, solver=None, **kwargs):
         """Initialize Optimizer class instantiation.
 
             [inputs] (resp, feat, rank, cetype=None, citype=None,
               rtype=None, solver=None, datasets=None, **kwargs)
-                resp: numpy array of the output labels with shape
+                resp: dict with keys 'train' 'cv' and 'test' mapping to
+                  numpy array of the output labels with shape
                   (nsamp,) where nsamp is the number of data
                   samples. Each element of resp must be in the range
                   [0, 1].
-                feat: numpy array of the input features with shape
+                feat: dict with keys 'train' 'cv' and 'test' mapping to
+                  numpy array of the input features with shape
                   (nsamp, ndim) where ndim is the number of features.
                 rank: positive integer that sets the number of columns
                   of the matrices U and V(that both have shape (ndim,
@@ -74,16 +76,6 @@ class Optimizer(object):
                 solver: (optional) must be set and initialized (using
                   class function init_solver) before beginning the
                   optimization. It is optional to set here, however.
-                datasets: (optional) is a dict with keys "trainset",
-                  "cvset", "testset" with values corresponding to
-                  Boolean indices for those samples that belong to
-                  each the training set, cross-validation set, and
-                  test set, respectively. If datasets is set to None,
-                  it is assumed that all samples belong to the
-                  training set and the other subsets are
-                  empty. Missing fields are assumed to be empty as
-                  well.
-
         """
 
         # initialize class members to standard arguments
@@ -92,14 +84,19 @@ class Optimizer(object):
         self.citype = citype
         self.rtype = rtype
         self.solver = solver
-        self.datasets = datasets
 
         # get data sizes
-        self.nsamp, self.ndim = self.get_data_sizes(feat)
-        self.ntrain, self.ncv, self.ntest = self.get_data_subset_sample_sizes(self.nsamp, self.datasets)
+        self.ntrain, self.ncv, self.ntest = feat['train'].size[0], feat['cv'].size[0], feat['test'].size[0]
+        self.nsamp = self.ntrain + self.ncv + self.ntest
+        self.ndim = feat['train'].size[1]
+        
+        assert feat['test'].size[1] == ndim
+        assert feat['cv'].size[1] == ndim
+
+        assert set(feat.keys()) == set(resp.keys())
 
         # initialize class members to keyword arguments
-        self.fscale = self.get_model_scaling(kwargs.get("fscale", None))
+        self.fscale = self.get_model_scaling(kwargs.get("fscale", None), defined_sets=self.resp.keys())
         self.float_dtype = kwargs.get("float_dtype", np.float64)
         self.precompile = kwargs.get("precompile", True)
 
@@ -128,53 +125,7 @@ class Optimizer(object):
         self.initialized = True
             
 
-    def get_data_sizes(self, feat):
-        """ Get the number of samples and features.
-
-            [inputs] (feat)
-                feat: numpy array with shape (nsamp, ndim).
-
-            [returns] (nsamp, ndim)
-                nsamp: integer count of the number of samples in the
-                  data set.
-                ndim: integer count of the number of features in the
-                  data set.
-
-        """
-        return feat.shape
-
-    
-    def get_data_subset_sample_sizes(self, nsamp, datasets):
-        """ Get the number of samples in each of the data subsets.
-
-            [inputs] (nsamp, datasets)
-                nsamp: integer count of the number of samples in the
-                  data set.
-                datasets: see definition from class function __init__.
-
-            [returns] (ntrain, ncv, ntest)
-                ntrain: integer count of the number of samples in the
-                  training set.
-                ncv: integer count of the number of samples in the
-                  cross-validation set.
-                ntest: integer count of the number of samples in the
-                  test set.
-
-        """
-        ntrain, ncv, ntest = 0, 0, 0
-        if "trainset" in datasets:
-            ntrain = np.sum(datasets["trainset"])
-            if "cvset" in datasets:
-                ncv = np.sum(datasets["cvset"])
-            if "testset" in datasets:
-                ntest = np.sum(datasets["testset"])
-        else:
-            ntrain = nsamp
-
-        return (ntrain, ncv, ntest)
-
-    
-    def get_model_scaling(self, fscale, **kwargs):
+    def get_model_scaling(self, fscale, datasets=None, **kwargs):
         """ Determine the scaling of the negative log-likelihood objective
             function (from mner.model.py).
 
@@ -187,6 +138,8 @@ class Optimizer(object):
                   scaled by the number of samples in each data
                   subset. If a value is set to None, then the
                   objective function is unscaled.
+                datasets: iterable of datasets available (a subset
+                  of {'train', 'cv', 'test'})
 
             [returns] fscale
                 fscale: see inputs.
@@ -194,11 +147,11 @@ class Optimizer(object):
         """
         if fscale is None:
             fscale = dict()
-            if "trainset" in self.datasets:
+            if 'train' in datasets:
                 fscale["trainset"] = 1.0
-                if "cvset" in self.datasets:
+                if 'cv' in datasets:
                     fscale["cvest"] = 1.0
-                if "testset" in self.datasets:
+                if 'test' in datasets:
                     fscale["testset"] = 1.0
             else:
                 fscale["trainset"] = 1.0
@@ -208,13 +161,13 @@ class Optimizer(object):
                     tmp = fscale.copy()
                     fscale = dict()
                     idx = 0
-                    if "trainset" in self.datasets:
+                    if 'train' in datasets:
                         fscale["trainset"] = fscale[idx]
                         idx += 1
-                        if "cvset" in self.datasets:
+                        if 'cv' in datasets:
                             fscale["cvset"] = fscale[idx]
                             idx += 1
-                        if "testset" in self.datasets:
+                        if 'test' in datasets:
                             fscale["testset"] = fscale[idx]
                             idx += 1
                 else:
@@ -259,18 +212,29 @@ class Optimizer(object):
         self.use_vars = kwargs.get("use_vars", {'avar': True, 'hvar': True, 'UVvar': True})
         self.use_consts = kwargs.get("use_consts", {'aconst': False, 'hconst': False, 'UVconst': False, 'Jconst': False})
         
-        train_model, cv_model, test_model = None, None, None
-        if self.datasets is None:
-            # model trained on entire dataset
-            train_model = model.MNEr(resp, feat, self.rank, cetype=self.cetype, citype=self.citype, rtype=self.rtype, fscale=self.fscale["trainset"], use_vars=self.use_vars, use_consts=self.use_consts, x_dev=self.x_dev, **kwargs)
+        train_model = model.MNEr(
+            resp['train'], feat['train'], self.rank, cetype=self.cetype, citype=self.citype,
+            rtype=self.rtype, fscale=self.fscale["trainset"], use_vars=self.use_vars,
+            use_consts=self.use_consts, x_dev=self.x_dev, **kwargs
+        )
+
+        if self.ncv > 0:
+            cv_model = model.MNEr(
+                resp['cv'], feat['cv'], self.rank, cetype=self.cetype, citype=self.citype,
+                fscale=self.fscale["cvset"], use_vars=self.use_vars, use_consts=self.use_consts,
+                x_dev=self.x_dev, **kwargs
+            )
         else:
-            # model trained on subset of dataset
-            if "trainset" in self.datasets:
-                train_model = model.MNEr(resp[self.datasets["trainset"]], feat[self.datasets["trainset"],:], self.rank, cetype=self.cetype, citype=self.citype, rtype=self.rtype, fscale=self.fscale["trainset"], use_vars=self.use_vars, use_consts=self.use_consts, x_dev=self.x_dev, **kwargs)
-            if "cvset" in self.datasets:
-                cv_model = model.MNEr(resp[self.datasets["cvset"]], feat[self.datasets["cvset"],:], self.rank, cetype=self.cetype, citype=self.citype, fscale=self.fscale["cvset"], use_vars=self.use_vars, use_consts=self.use_consts, x_dev=self.x_dev, **kwargs)
-            if "testset" in self.datasets:
-                test_model = model.MNEr(resp[self.datasets["testset"]], feat[self.datasets["testset"],:], self.rank, cetype=self.cetype, citype=self.citype, fscale=self.fscale["testset"], use_vars=self.use_vars, use_consts=self.use_consts, x_dev=self.x_dev, **kwargs)
+            cv_model = None
+
+        if self.ntest > 0:
+            test_model = model.MNEr(
+                resp['test'], feat['test'], self.rank, cetype=self.cetype, citype=self.citype,
+                fscale=self.fscale["testset"], use_vars=self.use_vars, use_consts=self.use_consts,
+                x_dev=self.x_dev, **kwargs
+            )
+        else:
+            test_model = None
 
         return (train_model, cv_model, test_model)
 
