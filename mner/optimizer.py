@@ -86,17 +86,17 @@ class Optimizer(object):
         self.solver = solver
 
         # get data sizes
-        self.ntrain, self.ncv, self.ntest = feat['train'].size[0], feat['cv'].size[0], feat['test'].size[0]
+        self.ntrain, self.ncv, self.ntest = feat['train'].shape[0], feat['cv'].shape[0], feat['test'].shape[0]
         self.nsamp = self.ntrain + self.ncv + self.ntest
-        self.ndim = feat['train'].size[1]
+        self.ndim = feat['train'].shape[1]
         
-        assert feat['test'].size[1] == ndim
-        assert feat['cv'].size[1] == ndim
+        assert feat['test'].shape[1] == self.ndim
+        assert feat['cv'].shape[1] == self.ndim
 
         assert set(feat.keys()) == set(resp.keys())
 
         # initialize class members to keyword arguments
-        self.fscale = self.get_model_scaling(kwargs.get("fscale", None), defined_sets=self.resp.keys())
+        self.fscale = self.get_model_scaling(kwargs.get("fscale", None), defined_sets=resp.keys())
         self.float_dtype = kwargs.get("float_dtype", np.float64)
         self.precompile = kwargs.get("precompile", True)
 
