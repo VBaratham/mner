@@ -211,12 +211,13 @@ class Optimizer(object):
         """
         self.use_vars = kwargs.get("use_vars", {'avar': True, 'hvar': True, 'UVvar': True})
         self.use_consts = kwargs.get("use_consts", {'aconst': False, 'hconst': False, 'UVconst': False, 'Jconst': False})
-        
+
         train_model = model.MNEr(
             resp['train'], feat['train'], self.rank, cetype=self.cetype, citype=self.citype,
             rtype=self.rtype, fscale=self.fscale["trainset"], use_vars=self.use_vars,
             use_consts=self.use_consts, x_dev=self.x_dev, **kwargs
         )
+        kwargs['lda2'] = 0
 
         if self.ncv > 0:
             cv_model = model.MNEr(

@@ -109,6 +109,7 @@ class MNEr:
                     constraints "UV-linear" and "UV-linear-insert"
                     (required when using these
                     constraints). I.e. U[:,k] = csigns[k]*V[:,k].
+                  - lda2 = value of constant (non-optimized) l2-norm regularization param
 
         """
 
@@ -220,6 +221,9 @@ class MNEr:
 
         # get x_dev, if provided
         self.x_dev = kwargs.get('x_dev', None)
+
+        # get l2-norm regularization param
+        self.lda2 = kwargs.get('lda2', None) 
 
         # initialize all Theano expressions that may be used in the optimization to None
         self.f = None
@@ -1072,10 +1076,12 @@ class MNEr:
             else:
                 l += 0.5 * T.sum( (Q ** 2) * T.tile(self.reg_params[idx].reshape((1, self.rank)), (2*self.ndim, 1)) )
 
-        if "l2-norm" in self.rtype:
-            idx = self.rtype.index("l2-norm")
-            self.reg_params[idx] = theano.shared(np.zeros((1,)).astype(self.float_dtype), name="reg_param_l2-norm")
-            l += 0.5 * self.reg_params[idx] * T.sum(h ** 2)
+        # if "l2-norm" in self.rtype:
+        if self.lda2 > 0:
+            # idx = self.rtype.index("l2-norm")
+            # self.reg_params[idx] = theano.shared(np.zeros((1,)).astype(self.float_dtype), name="reg_param_l2-norm")
+            # l += 0.5 * self.reg_params[idx] * T.sum(h ** 2)
+            l += 0.5 * self.lda2 * T.sum(h ** 2)
 
         self.l = l
         return l
@@ -1131,13 +1137,15 @@ class MNEr:
                 else:
                     dl += dldQ.reshape((self.nvar,))
 
-        if "l2-norm" in self.rtype:
-            idx = self.rtype.index("l2-norm")
+        # if "l2-norm" in self.rtype:
+        if self.lda2 > 0:
+            # idx = self.rtype.index("l2-norm")
             offset = 0
             if self.use_vars['avar']:
                 offset += 1
             if self.use_vars['hvar']:
-                dl = T.inc_subtensor(dl[offset:offset+self.ndim], self.reg_params[idx][0] * h)
+                # dl = T.inc_subtensor(dl[offset:offset+self.ndim], self.reg_params[idx][0] * h)
+                dl = T.inc_subtensor(dl[offset:offset+self.ndim], self.lda2 * h)
 
         self.dl = dl
         return dl
@@ -1175,13 +1183,15 @@ class MNEr:
                 d2ldQ2 = T.nlinalg.diag(T.tile(self.reg_params[idx].reshape((self.rank, 1)), (1, 2*self.ndim)).reshape((2*self.rank*self.ndim,)))
             d2l = T.inc_subtensor(d2l[offset:offset+d2ldQ2.shape[0], offset:offset+d2ldQ2.shape[1]], d2ldQ2)
 
-        if "l2-norm" in self.rtype:
-            idx = self.rtype.index("l2-norm")
+        # if "l2-norm" in self.rtype:
+        if self.lda2 > 0:
+            # idx = self.rtype.index("l2-norm")
             offset = 0
             if self.use_vars['avar']:
                 offset += 1
             if self.use_vars['hvar']:
-                d2l = T.inc_subtensor(d2l[offset:offset+self.ndim, offset:offset+self.ndim], T.nlinalg.diag(T.tile(self.reg_params[idx].reshape((1, 1)), (self.ndim, 1)).ravel()))
+                # d2l = T.inc_subtensor(d2l[offset:offset+self.ndim, offset:offset+self.ndim], T.nlinalg.diag(T.tile(self.reg_params[idx].reshape((1, 1)), (self.ndim, 1)).ravel()))
+                d2l = T.inc_subtensor(d2l[offset:offset+self.ndim, offset:offset+self.ndim], T.nlinalg.diag(T.tile(np.array([self.lda2]).reshape(1, 1), (self.ndim, 1)).ravel()))
 
         self.d2l = d2l
         return d2l
