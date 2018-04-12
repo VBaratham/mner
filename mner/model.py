@@ -1211,7 +1211,7 @@ class MNEr:
         Z1 = 1.0 + T.exp(-arg)
 
         f = T.sum(self.resp * T.log(Z1 + self.eps) + (1.0 - self.resp) * T.log(Z0 + self.eps)) * self.fscale
-
+            
         if self.rtype is not None:
             l = self.reg_expr(x)
             f += l
@@ -1909,83 +1909,6 @@ class MNEr:
 
     def __getitem__(self, name):
         return self.get(name)
-
-
-class MNErPlotter:
-
-    def __init__(self, a, h, U, V, w, v):
-        self.a = a
-        self.h = h
-        self.U = U
-        self.V = V
-        self.J = np.dot(U, V.T)
-        self.w = w
-        self.v = v
-
-    @classmethod
-    def from_file(cls, output_filename, ndim, settings):
-        """
-        Instantiate this class for the purpose of making predictions
-        with the given weight vector
-        """
-        h5file = h5py.File(output_filename, 'r')
-        x = h5file['x_best'][()]
-        w = h5file['w'][()]
-        v = h5file['v'][()]
-        rank = h5file.get('rank', settings.rank)
-        a, h, U, V = mner.util.util.vec_to_weights(x, ndim, rank, csigns=settings.csigns)
-        h5file.close()
-        return MNErPlotter(a, h, U, V, w, v)
-
-
-    def predict_rate(self, samples):
-        """
-        Use the current weights to make a prediction of the instantaneous firing rate
-        in response to the given stimulus, zscored to the given avg/std
-        """
-        activation = self.a + np.dot(samples, self.h) + np.sum(samples * np.dot(samples, self.J), axis=1)
-        return 1.0/(1.0 + np.exp(-activation))
-
-
-    def make_plots(self, nlags, ndim, settings, savefile_fmt):
-        """
-        Save files for 1st order STRF and multicomponent STRF
-        """
-
-        ncols = 5
-        if settings.rank > ncols:
-            nrows = int(np.ceil(settings.rank/ncols))
-        else:
-            nrows = 1
-            ncols = settings.rank
-        
-        plt.clf()
-        plt.axis("off")
-        plt.plot(np.arange(self.w.size), self.w, 'ro')
-        plt.savefig(savefile_fmt % "evals.pdf")
-        print "saved", savefile_fmt % "evals.pdf"
-
-        plt.clf()
-        plt.axis("off")
-        cm = np.max(np.abs(self.h))
-        plt.imshow(np.reshape(self.h, (nlags, ndim/nlags)).T, aspect='equal', interpolation='none', origin='lower', clim=(-cm, cm), cmap='RdBu_r')
-        plt.savefig(savefile_fmt % "firstorderSTRF.pdf")
-        print "saved", savefile_fmt % "firstorderSTRF.pdf"
-
-        plt.clf()
-        plt.axis("on")
-        order = np.argsort(abs(self.w))[::-1] # Reverse sort
-        for i, eig_i in enumerate(order[:settings.rank]):
-            plt.subplot(nrows, ncols, i+1)
-            cm = np.max(np.abs(self.v[:,eig_i]))
-            plt.imshow(np.reshape(self.v[:,eig_i], (nlags, ndim/nlags)).T, aspect='equal', interpolation='none', origin='lower', clim=(-cm, cm), cmap='RdBu_r')
-            plt.title("%.3g" % self.w[eig_i])
-            plt.axis('off')
-        plt.savefig(savefile_fmt % "mcSTRF.pdf")
-        print "saved", savefile_fmt % "mcSTRF.pdf"
-
-        plt.clf()
-
 
 
 
